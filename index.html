@@ -1,244 +1,395 @@
-
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>上海 行き先マップ</title>
 <style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-.pin-group { cursor: pointer; }
-.pin-circle { transition: r 0.15s; }
-#tooltip {
-  position: absolute;
-  background: var(--color-background-primary);
-  border: 0.5px solid var(--color-border-secondary);
-  border-radius: var(--border-radius-md);
-  padding: 10px 14px;
-  font-size: 13px;
-  pointer-events: none;
-  max-width: 230px;
-  display: none;
-  z-index: 10;
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{width:100%;height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Hiragino Sans',sans-serif;background:#f0ede8;}
+#root{position:relative;width:100%;height:100dvh;overflow:hidden;}
+#map-svg{position:absolute;inset:0;width:100%;height:100%;}
+
+#drawer{
+  position:absolute;bottom:0;left:0;right:0;
+  background:#fff;
+  border-radius:18px 18px 0 0;
+  border-top:0.5px solid #ddd;
+  transform:translateY(100%);
+  transition:transform 0.28s cubic-bezier(.32,.72,0,1);
+  z-index:30;
+  padding-bottom:env(safe-area-inset-bottom,20px);
 }
-#tooltip .tt-name { font-weight: 500; font-size: 14px; color: var(--color-text-primary); margin-bottom: 4px; }
-#tooltip .tt-addr { color: var(--color-text-secondary); font-size: 12px; margin-bottom: 6px; line-height: 1.4; }
-#tooltip .tt-times { display: flex; gap: 8px; margin-bottom: 6px; }
-#tooltip .tb { font-size: 11px; padding: 2px 8px; border-radius: 20px; }
-#tooltip .walk { background: #EAF3DE; color: #3B6D11; }
-#tooltip .taxi { background: #FAEEDA; color: #854F0B; }
-#tooltip .hint { font-size: 11px; color: var(--color-text-tertiary); }
-#copy-toast {
-  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-  background: #444441; color: #fff; padding: 8px 18px;
-  border-radius: 20px; font-size: 13px; opacity: 0;
-  transition: opacity 0.3s; pointer-events: none; z-index: 100;
+#drawer.open{transform:translateY(0);}
+#drawer-handle{display:flex;align-items:center;justify-content:center;height:32px;cursor:pointer;}
+#drawer-handle::before{content:'';display:block;width:40px;height:4px;border-radius:2px;background:#ccc;}
+#drawer-body{padding:4px 20px 20px;}
+#d-name{font-size:18px;font-weight:600;color:#1a1a1a;margin-bottom:5px;}
+#d-addr{font-size:13px;color:#666;margin-bottom:14px;line-height:1.6;}
+#d-times{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;}
+.tb{font-size:12px;padding:5px 12px;border-radius:20px;font-weight:500;white-space:nowrap;}
+.walk {background:#EAF3DE;color:#27500A;}
+.taxi {background:#FAEEDA;color:#633806;}
+.metro{background:#E6F1FB;color:#0C447C;}
+.orig {background:#FAECE7;color:#712B13;}
+#copy-btn{
+  display:block;width:100%;padding:15px;
+  background:#f5f5f5;border:0.5px solid #ddd;
+  border-radius:12px;font-size:15px;font-weight:600;
+  color:#1a1a1a;cursor:pointer;text-align:center;
+  transition:background 0.12s;
 }
-.legend { display: flex; gap: 16px; padding: 10px 14px; flex-wrap: wrap; border-top: 0.5px solid var(--color-border-tertiary); }
-.legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-secondary); }
-.legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.tap-hint { text-align: center; font-size: 12px; color: var(--color-text-tertiary); padding: 6px 0 8px; }
-#map-wrap { position: relative; background: #ddeef5; border-radius: var(--border-radius-lg); border: 0.5px solid var(--color-border-tertiary); overflow: hidden; }
+#copy-btn:active{background:#e8e8e8;}
+#copy-btn.copied{background:#EAF3DE;color:#27500A;border-color:#97C459;}
+
+#legend{
+  position:absolute;top:14px;left:14px;
+  background:rgba(255,255,255,0.92);
+  border:0.5px solid #ddd;border-radius:10px;
+  padding:9px 12px;display:flex;flex-direction:column;gap:6px;z-index:10;
+}
+.li{display:flex;align-items:center;gap:7px;font-size:11px;color:#555;}
+.ld{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
 </style>
+</head>
+<body>
+<div id="root">
+<svg id="map-svg" viewBox="0 0 380 600" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice">
+  <rect width="380" height="600" fill="#f0ede8"/>
 
-<div id="map-wrap">
-<svg id="map-svg" viewBox="0 0 680 420" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;">
-  <!-- land -->
-  <rect width="680" height="420" fill="#f0ede8"/>
-  <!-- Huangpu River -->
-  <path d="M340,0 C345,60 355,100 360,140 C365,180 350,210 345,250 C340,290 345,340 350,420" fill="none" stroke="#b8d8e8" stroke-width="14" opacity="0.7"/>
-  <!-- Suzhou Creek -->
-  <path d="M0,165 C80,162 150,158 210,162 C250,165 280,168 320,166 C340,165 352,162 360,160" fill="none" stroke="#b8d8e8" stroke-width="7" opacity="0.6"/>
-  <!-- Grid roads -->
-  <line x1="0" y1="200" x2="680" y2="200" stroke="#e0d8cc" stroke-width="1.5"/>
-  <line x1="200" y1="0" x2="200" y2="420" stroke="#e0d8cc" stroke-width="1.5"/>
-  <line x1="400" y1="0" x2="400" y2="420" stroke="#e0d8cc" stroke-width="1"/>
-  <line x1="0" y1="300" x2="680" y2="300" stroke="#e0d8cc" stroke-width="1"/>
-  <line x1="0" y1="120" x2="680" y2="120" stroke="#e0d8cc" stroke-width="1"/>
-  <!-- Area labels -->
-  <text x="90"  y="95"  font-size="10" fill="#b4b2a9" font-family="sans-serif" text-anchor="middle">静安区</text>
-  <text x="280" y="95"  font-size="10" fill="#b4b2a9" font-family="sans-serif" text-anchor="middle">黄浦区</text>
-  <text x="460" y="95"  font-size="10" fill="#b4b2a9" font-family="sans-serif" text-anchor="middle">浦東新区</text>
-  <text x="90"  y="280" font-size="10" fill="#b4b2a9" font-family="sans-serif" text-anchor="middle">長寧区</text>
-  <!-- dashed lines layer -->
-  <g id="lines"></g>
-  <!-- pins layer -->
-  <g id="pins"></g>
+  <!--
+    黄浦江の実際の流れ：
+    - 上流（北）から来て、普陀区・閘北区の南を西→東に流れる（蘇州河合流点あたり）
+    - 中心部（外灘あたり）でS字に蛇行：
+      まず北西から南東へ、次に折り返して北東へ向かう
+    - 楊浦区の南側を流れてから、浦東方向へ抜けていく
+    この蛇行のため「楊浦区」は川の西側（浦西）に位置する
+    地図上の大まかな対応：
+      x=190-200あたりが外灘（中心部の川岸）
+      川は外灘付近でS字：北から来て右→左→右と曲がる
+  -->
+
+  <!-- 黄浦江本流（S字蛇行） -->
+  <!-- 北から南へ：まず右岸寄りに南下、中心部でS字、さらに南東へ -->
+  <path d="
+    M 255 0
+    C 252 40,  248 70,  242 100
+    C 236 130, 228 145, 220 158
+    C 210 172, 200 178, 195 188
+    C 190 198, 188 210, 192 222
+    C 196 234, 205 242, 215 255
+    C 225 268, 232 280, 230 295
+    C 228 310, 218 320, 214 335
+    C 210 350, 212 370, 218 395
+    C 224 420, 235 450, 248 480
+    C 260 510, 270 540, 272 600
+  " fill="none" stroke="#b8d8e8" stroke-width="13" opacity="0.75"/>
+
+  <!-- 蘇州河（西から来て外灘北で合流） -->
+  <path d="M 0 178 C 50 175, 100 172, 140 174 C 165 176, 182 180, 198 184 C 207 186, 213 188, 218 190"
+        fill="none" stroke="#b8d8e8" stroke-width="6" opacity="0.6"/>
+
+  <!-- グリッド線 -->
+  <line x1="0"   y1="270" x2="380" y2="270" stroke="#e0d8cc" stroke-width="1.2"/>
+  <line x1="0"   y1="150" x2="380" y2="150" stroke="#e0d8cc" stroke-width="1"/>
+  <line x1="0"   y1="420" x2="380" y2="420" stroke="#e0d8cc" stroke-width="1"/>
+  <line x1="110" y1="0"   x2="110" y2="600" stroke="#e0d8cc" stroke-width="1.2"/>
+  <line x1="250" y1="0"   x2="250" y2="600" stroke="#e0d8cc" stroke-width="1"/>
+
+  <!-- 区名ラベル -->
+  <text x="54"  y="128" font-size="10" fill="#b4b2a9" font-family="sans-serif" text-anchor="middle">静安区</text>
+  <text x="160" y="128" font-size="10" fill="#b4b2a9" font-family="sans-serif" text-anchor="middle">黄浦区</text>
+  <text x="315" y="128" font-size="10" fill="#b4b2a9" font-family="sans-serif" text-anchor="middle">浦東新区</text>
+  <text x="54"  y="350" font-size="10" fill="#b4b2a9" font-family="sans-serif" text-anchor="middle">長寧区</text>
+  <text x="220" y="82"  font-size="10" fill="#b4b2a9" font-family="sans-serif" text-anchor="middle">楊浦区</text>
+  <text x="315" y="490" font-size="10" fill="#b4b2a9" font-family="sans-serif" text-anchor="middle">南匯区</text>
+
+  <g id="lines-g"></g>
+  <g id="pins-g"></g>
 </svg>
-<div id="tooltip">
-  <div class="tt-name" id="tt-name"></div>
-  <div class="tt-addr" id="tt-addr"></div>
-  <div class="tt-times">
-    <span class="tb walk" id="tt-walk"></span>
-    <span class="tb taxi" id="tt-taxi"></span>
-  </div>
-  <div class="hint">タップで住所をコピー</div>
-</div>
+
+<div id="legend">
+  <div class="li"><div class="ld" style="background:#D85A30"></div>起点</div>
+  <div class="li"><div class="ld" style="background:#185FA5"></div>観光・体験</div>
+  <div class="li"><div class="ld" style="background:#3B6D11"></div>空港</div>
+  <div class="li"><div class="ld" style="background:#D4537E"></div>テーマパーク</div>
 </div>
 
-<div class="legend">
-  <div class="legend-item"><div class="legend-dot" style="background:#D85A30"></div>ガーデンホテル（起点）</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#185FA5"></div>観光・体験</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#3B6D11"></div>空港</div>
+<div id="drawer">
+  <div id="drawer-handle"></div>
+  <div id="drawer-body">
+    <div id="d-name"></div>
+    <div id="d-addr"></div>
+    <div id="d-times">
+      <span class="tb" id="d-walk"></span>
+      <span class="tb" id="d-taxi"></span>
+      <span class="tb" id="d-metro"></span>
+    </div>
+    <div id="copy-btn">住所をコピー</div>
+  </div>
 </div>
-<div class="tap-hint">ホバーで詳細 / タップで住所コピー</div>
-<div id="copy-toast">住所をコピーしました！</div>
+</div>
 
 <script>
+/*
+  座標メモ（viewBox 380x600）
+  黄浦江は x≈190-230 あたりをS字で流れる
+  浦東（川の東）：x > 230
+  浦西（川の西）：x < 190
+
+  ガーデンホテル：茂名南路＝黄浦区、外灘の西 → x:172, y:218
+  一大会址：興業路＝新天地エリア → x:148, y:258
+  INS新楽園：雁蕩路＝淮海中路近く → x:162, y:245
+  SANDBOX VR：淮海中路381号 → x:170, y:250  ← INSの近く・少し南東
+  SleepNoMore：北京西路＝静安区 → x:122, y:174
+  UMEPLAY天安千樹：普陀区莫干山路 → x:82, y:138
+  UMEPLAY楊浦店：楊浦区黄興路＝川の西・北東部 → x:220, y:78
+  豫園：福佑路＝黄浦区、外灘南 → x:188, y:288
+  上海中心大廈：陸家嘴＝浦東 → x:290, y:192
+  虹橋空港：長寧区西 → x:18, y:298
+  浦東空港：南東 → x:355, y:510
+  ディズニー：浦東南 → x:334, y:450
+*/
 const places = [
-  { id:"garden",       name:"ガーデンホテル",               label:"ガーデン\nホテル",          addr:"茂名南路58号",                                          cat:"hotel",      x:298, y:178, walkMin:0,    taxiMin:0  },
-  { id:"hongqiao",     name:"虹橋国際空港",                 label:"虹橋空港",                  addr:"上海市长宁区虹桥路2550号",                              cat:"airport",    x:44,  y:218, walkMin:null, taxiMin:30 },
-  { id:"pudong",       name:"浦東国際空港",                 label:"浦東空港",                  addr:"迎宾大道6000号",                                        cat:"airport",    x:636, y:372, walkMin:null, taxiMin:50 },
-  { id:"shcenter",     name:"上海中心大廈",                 label:"上海中心\n大廈",             addr:"上海市浦东新区东泰路126号",                             cat:"attraction", x:430, y:148, walkMin:null, taxiMin:15 },
-  { id:"yuyuan",       name:"豫園",                        label:"豫園",                      addr:"福佑路168号",                                           cat:"attraction", x:356, y:234, walkMin:25,   taxiMin:8  },
-  { id:"cpc",          name:"一大会址",                    label:"一大会址",                   addr:"兴业路76号",                                            cat:"attraction", x:278, y:226, walkMin:15,   taxiMin:5  },
-  { id:"ins",          name:"INS新楽園",                   label:"INS\n新楽園",               addr:"雁荡路109号",                                           cat:"attraction", x:312, y:204, walkMin:8,    taxiMin:3  },
-  { id:"sleepnomore",  name:"SleepNoMore",                 label:"Sleep\nNoMore",             addr:"北京西路1013号",                                        cat:"attraction", x:244, y:146, walkMin:22,   taxiMin:7  },
-  { id:"umeplay_tian", name:"UMEPLAY天安千樹店",            label:"UMEPLAY\n天安千樹",         addr:"上海市普陀区莫干山路600号大洋晶典·天安千树",            cat:"attraction", x:186, y:126, walkMin:null, taxiMin:20 },
-  { id:"umeplay_yang", name:"UMEPLAY楊浦店",               label:"UMEPLAY\n楊浦店",           addr:"上海市杨浦区黄兴路221号互联宝地D2栋101室",              cat:"attraction", x:432, y:88,  walkMin:null, taxiMin:25 },
-  { id:"sandbox",      name:"SANDBOX VR",                  label:"SANDBOX\nVR",              addr:"淮海中路381号中环广场L2层",                             cat:"attraction", x:272, y:200, walkMin:12,   taxiMin:4  },
+  {
+    id:"garden", name:"ガーデンホテル", label:"ガーデン\nホテル",
+    addr:"茂名南路58号",
+    cat:"hotel", x:172, y:218,
+    walkMin:0, taxiMin:0, metroMin:null
+  },
+  {
+    id:"hongqiao", name:"虹橋国際空港", label:"虹橋\n空港",
+    addr:"上海市长宁区虹桥路2550号",
+    cat:"airport", x:18, y:298,
+    walkMin:null, taxiMin:30, metroMin:40
+  },
+  {
+    id:"pudong", name:"浦東国際空港", label:"浦東\n空港",
+    addr:"迎宾大道6000号",
+    cat:"airport", x:355, y:510,
+    walkMin:null, taxiMin:50, metroMin:60
+  },
+  {
+    id:"disney", name:"上海ディズニーランド", label:"ディズニー\nランド",
+    addr:"上海市浦东新区川沙新镇申迪西路333号",
+    cat:"theme", x:334, y:450,
+    walkMin:null, taxiMin:45, metroMin:55
+  },
+  {
+    id:"shcenter", name:"上海中心大廈", label:"上海中心\n大廈",
+    addr:"上海市浦东新区东泰路126号",
+    cat:"attraction", x:290, y:192,
+    walkMin:null, taxiMin:15, metroMin:20
+  },
+  {
+    id:"yuyuan", name:"豫園", label:"豫園",
+    addr:"福佑路168号",
+    cat:"attraction", x:188, y:290,
+    walkMin:null, taxiMin:8, metroMin:15
+  },
+  {
+    id:"cpc", name:"一大会址", label:"一大会址",
+    addr:"兴业路76号",
+    cat:"attraction", x:148, y:260,
+    walkMin:15, taxiMin:5, metroMin:10
+  },
+  {
+    id:"ins", name:"INS新楽園", label:"INS新楽園",
+    addr:"雁荡路109号",
+    cat:"attraction", x:163, y:244,
+    walkMin:8, taxiMin:3, metroMin:8
+  },
+  {
+    id:"sleepnomore", name:"SleepNoMore", label:"Sleep\nNoMore",
+    addr:"北京西路1013号",
+    cat:"attraction", x:122, y:174,
+    walkMin:22, taxiMin:7, metroMin:12
+  },
+  {
+    id:"umeplay_t", name:"UMEPLAY 天安千樹店", label:"UMEPLAY\n天安千樹",
+    addr:"上海市普陀区莫干山路600号大洋晶典·天安千树",
+    cat:"attraction", x:82, y:138,
+    walkMin:null, taxiMin:20, metroMin:30
+  },
+  {
+    id:"umeplay_y", name:"UMEPLAY 楊浦店", label:"UMEPLAY\n楊浦店",
+    addr:"上海市杨浦区黄兴路221号互联宝地D2栋101室",
+    cat:"attraction", x:222, y:78,
+    walkMin:null, taxiMin:25, metroMin:35
+  },
+  {
+    id:"sandbox", name:"SANDBOX VR", label:"SANDBOX\nVR",
+    addr:"淮海中路381号中环广场L2层",
+    cat:"attraction", x:170, y:252,
+    walkMin:12, taxiMin:4, metroMin:9
+  },
 ];
 
-const colors = { hotel:"#D85A30", airport:"#3B6D11", attraction:"#185FA5" };
-const hotel = places.find(p => p.id === "garden");
-const svgEl = document.getElementById("map-svg");
-const pinsG = document.getElementById("pins");
-const linesG = document.getElementById("lines");
-const tooltip = document.getElementById("tooltip");
-const wrap = document.getElementById("map-wrap");
+/*
+  ラベルオフセット方針：
+  - 密集エリア（一大会址・INS・SANDBOX）は方向をそれぞれ分散
+  - 一大会址：左
+  - INS：上
+  - SANDBOX：右下（ピンより右）
+  - 豫園：右
+  - ガーデン：上
+*/
+const labelOffset = {
+  garden:      {dx:  0, dy:-19, anchor:"middle"},
+  hongqiao:    {dx:  0, dy:-19, anchor:"middle"},
+  pudong:      {dx:  0, dy:-19, anchor:"middle"},
+  disney:      {dx:-32, dy: -5, anchor:"end"},
+  shcenter:    {dx:  0, dy:-19, anchor:"middle"},
+  yuyuan:      {dx: 28, dy: -4, anchor:"start"},
+  cpc:         {dx:-28, dy: -4, anchor:"end"},
+  ins:         {dx:  0, dy:-19, anchor:"middle"},
+  sleepnomore: {dx:  0, dy:-19, anchor:"middle"},
+  umeplay_t:   {dx:  0, dy:-19, anchor:"middle"},
+  umeplay_y:   {dx:  0, dy:-19, anchor:"middle"},
+  sandbox:     {dx: 28, dy: -4, anchor:"start"},
+};
 
-// dashed connector lines
+const colors = {hotel:"#D85A30", airport:"#3B6D11", attraction:"#185FA5", theme:"#D4537E"};
+const hotel  = places[0];
+const pinsG  = document.getElementById("pins-g");
+const linesG = document.getElementById("lines-g");
+const drawer = document.getElementById("drawer");
+const ocMap  = {};
+let activeId = null;
+
 places.forEach(p => {
   if (p.id === "garden") return;
   const l = document.createElementNS("http://www.w3.org/2000/svg","line");
-  l.setAttribute("x1", hotel.x); l.setAttribute("y1", hotel.y);
-  l.setAttribute("x2", p.x);     l.setAttribute("y2", p.y);
-  l.setAttribute("stroke","#ccc"); l.setAttribute("stroke-width","0.8");
-  l.setAttribute("stroke-dasharray","3,5"); l.setAttribute("opacity","0.55");
+  l.setAttribute("x1",hotel.x); l.setAttribute("y1",hotel.y);
+  l.setAttribute("x2",p.x);     l.setAttribute("y2",p.y);
+  l.setAttribute("stroke","#ccc"); l.setAttribute("stroke-width","0.7");
+  l.setAttribute("stroke-dasharray","3,5"); l.setAttribute("opacity","0.4");
   linesG.appendChild(l);
 });
 
-// label offset table (to avoid overlap)
-const labelOffset = {
-  garden:       { dx: 0,   dy:-18 },
-  hongqiao:     { dx: 0,   dy:-18 },
-  pudong:       { dx: 0,   dy:-18 },
-  shcenter:     { dx: 0,   dy:-18 },
-  yuyuan:       { dx:18,   dy: -6 },
-  cpc:          { dx:-34,  dy: -6 },
-  ins:          { dx: 16,  dy: -6 },
-  sleepnomore:  { dx: 0,   dy:-18 },
-  umeplay_tian: { dx: 0,   dy:-18 },
-  umeplay_yang: { dx: 0,   dy:-18 },
-  sandbox:      { dx:-36,  dy: -6 },
-};
-
 places.forEach(p => {
-  const col = colors[p.cat] || colors.attraction;
-  const r = p.id === "garden" ? 9 : 7;
-  const off = labelOffset[p.id] || {dx:0, dy:-16};
+  const col = colors[p.cat];
+  const r   = p.id === "garden" ? 10 : 8;
+  const off = labelOffset[p.id] || {dx:0, dy:-19, anchor:"middle"};
+  const g   = document.createElementNS("http://www.w3.org/2000/svg","g");
+  g.style.cursor = "pointer";
 
-  const g = document.createElementNS("http://www.w3.org/2000/svg","g");
-  g.setAttribute("class","pin-group");
-
-  // invisible hit area — prevents jitter from leaving the circle
   const hit = document.createElementNS("http://www.w3.org/2000/svg","circle");
-  hit.setAttribute("cx", p.x); hit.setAttribute("cy", p.y);
-  hit.setAttribute("r","20"); hit.setAttribute("fill","transparent");
+  hit.setAttribute("cx",p.x); hit.setAttribute("cy",p.y);
+  hit.setAttribute("r","22"); hit.setAttribute("fill","transparent");
   g.appendChild(hit);
 
-  // outer circle
   const oc = document.createElementNS("http://www.w3.org/2000/svg","circle");
-  oc.setAttribute("class","pin-circle"); oc.setAttribute("cx", p.x); oc.setAttribute("cy", p.y);
-  oc.setAttribute("r", r); oc.setAttribute("fill", col); oc.setAttribute("opacity","0.9");
+  oc.setAttribute("cx",p.x); oc.setAttribute("cy",p.y);
+  oc.setAttribute("r",r); oc.setAttribute("fill",col); oc.setAttribute("opacity","0.9");
+  ocMap[p.id] = {el:oc, base:r};
   g.appendChild(oc);
 
-  // inner dot
   const ic = document.createElementNS("http://www.w3.org/2000/svg","circle");
-  ic.setAttribute("cx", p.x); ic.setAttribute("cy", p.y);
-  ic.setAttribute("r", p.id==="garden"?4:3); ic.setAttribute("fill","#fff");
+  ic.setAttribute("cx",p.x); ic.setAttribute("cy",p.y);
+  ic.setAttribute("r", p.id==="garden" ? 4.5 : 3); ic.setAttribute("fill","#fff");
   g.appendChild(ic);
 
-  // label lines
   const lines = p.label.split("\n");
-  const lx = p.x + off.dx;
-  const ly = p.y + off.dy;
-  const fontSize = 9.5;
-  const lineH = 11;
+  const lx = p.x + off.dx, ly = p.y + off.dy;
+  const anchor = off.anchor;
+  const fs = 8.5, lh = 10.5;
+  const maxLen = Math.max(...lines.map(l => l.length));
+  const bw = maxLen * 5.6 + 8;
+  const bh = lines.length * lh + 4;
+  const bx = anchor === "start" ? lx - 3
+            : anchor === "end"   ? lx - bw + 3
+            : lx - bw/2;
 
-  // label background rect
-  const maxLen = Math.max(...lines.map(l=>l.length));
-  const bw = maxLen * 5.8 + 6;
-  const bh = lines.length * lineH + 2;
   const bg = document.createElementNS("http://www.w3.org/2000/svg","rect");
-  bg.setAttribute("x", lx - bw/2); bg.setAttribute("y", ly - lineH * lines.length + 1);
-  bg.setAttribute("width", bw); bg.setAttribute("height", bh);
-  bg.setAttribute("fill","rgba(255,255,255,0.75)"); bg.setAttribute("rx","2");
+  bg.setAttribute("x",bx); bg.setAttribute("y", ly - lh*lines.length + 1);
+  bg.setAttribute("width",bw); bg.setAttribute("height",bh);
+  bg.setAttribute("fill","rgba(255,255,255,0.85)"); bg.setAttribute("rx","2");
   g.appendChild(bg);
 
-  lines.forEach((line, i) => {
+  lines.forEach((ln,i) => {
     const t = document.createElementNS("http://www.w3.org/2000/svg","text");
-    t.setAttribute("x", lx);
-    t.setAttribute("y", ly - (lines.length - 1 - i) * lineH);
-    t.setAttribute("text-anchor","middle");
-    t.setAttribute("font-size", fontSize);
-    t.setAttribute("font-family","sans-serif");
-    t.setAttribute("fill","#2C2C2A");
-    t.setAttribute("font-weight","500");
-    t.textContent = line;
+    t.setAttribute("x",lx); t.setAttribute("y", ly - (lines.length-1-i)*lh);
+    t.setAttribute("text-anchor", anchor);
+    t.setAttribute("font-size",fs); t.setAttribute("font-family","sans-serif");
+    t.setAttribute("fill","#2C2C2A"); t.setAttribute("font-weight","500");
+    t.textContent = ln;
     g.appendChild(t);
   });
 
   pinsG.appendChild(g);
 
-  // events — all on the <g>, pointer-events handled by large hit circle
-  g.addEventListener("mouseenter", e => showTT(e, p));
-  g.addEventListener("mousemove",  e => moveTT(e));
-  g.addEventListener("mouseleave", hideTT);
-  g.addEventListener("click", () => copyAddr(p));
+  const tap = e => {e.preventDefault(); selectPlace(p);};
+  g.addEventListener("touchend", tap, {passive:false});
+  g.addEventListener("click", tap);
 });
 
-let currentP = null;
-function showTT(e, p) {
-  currentP = p;
-  document.getElementById("tt-name").textContent = p.name;
-  document.getElementById("tt-addr").textContent = p.addr;
-  const wEl = document.getElementById("tt-walk");
-  const tEl = document.getElementById("tt-taxi");
-  if (p.id === "garden") {
-    wEl.textContent = "★ 起点"; wEl.style.background="#FAECE7"; wEl.style.color="#993C1D";
-    tEl.style.display="none";
-  } else {
-    tEl.style.display="";
-    wEl.style.background="#EAF3DE"; wEl.style.color="#3B6D11";
-    wEl.textContent = p.walkMin ? "🚶 "+p.walkMin+"分" : "🚶 遠距離";
-    tEl.textContent = "🚕 "+p.taxiMin+"分";
+function closeDrawer() {
+  drawer.classList.remove("open");
+  if (activeId) {
+    const prev = ocMap[activeId];
+    if (prev) {prev.el.setAttribute("r",prev.base); prev.el.setAttribute("opacity","0.9");}
+    activeId = null;
   }
-  tooltip.style.display = "block";
-  moveTT(e);
 }
-function moveTT(e) {
-  const r = wrap.getBoundingClientRect();
-  let lft = e.clientX - r.left + 14;
-  let top = e.clientY - r.top - 10;
-  if (lft + 230 > r.width) lft = e.clientX - r.left - 240;
-  if (top < 0) top = 0;
-  tooltip.style.left = lft+"px";
-  tooltip.style.top  = top+"px";
-}
-function hideTT() { tooltip.style.display="none"; currentP=null; }
 
-function copyAddr(p) {
-  const t = p.addr;
+function selectPlace(p) {
+  if (activeId) {
+    const prev = ocMap[activeId];
+    if (prev) {prev.el.setAttribute("r",prev.base); prev.el.setAttribute("opacity","0.9");}
+  }
+  activeId = p.id;
+  ocMap[p.id].el.setAttribute("r", ocMap[p.id].base + 4);
+  ocMap[p.id].el.setAttribute("opacity","1");
+
+  document.getElementById("d-name").textContent = p.name;
+  document.getElementById("d-addr").textContent = p.addr;
+
+  const wEl = document.getElementById("d-walk");
+  const tEl = document.getElementById("d-taxi");
+  const mEl = document.getElementById("d-metro");
+
+  if (p.id === "garden") {
+    wEl.className="tb orig"; wEl.textContent="★ 起点"; wEl.style.display="";
+    tEl.style.display="none";
+    mEl.style.display="none";
+  } else {
+    wEl.style.display="";
+    tEl.style.display="";
+    mEl.style.display="";
+    wEl.className="tb walk";
+    wEl.textContent = p.walkMin ? "徒歩 "+p.walkMin+"分" : "徒歩 遠距離";
+    tEl.className="tb taxi";
+    tEl.textContent = "タクシー "+p.taxiMin+"分";
+    mEl.className="tb metro";
+    mEl.textContent = p.metroMin ? "地下鉄 "+p.metroMin+"分" : "地下鉄 要乗換";
+  }
+
+  const btn = document.getElementById("copy-btn");
+  btn.textContent="住所をコピー"; btn.className="";
+  btn.onclick = () => doCopy(p);
+  drawer.classList.add("open");
+}
+
+document.getElementById("drawer-handle").addEventListener("click", closeDrawer);
+
+function doCopy(p) {
+  const btn = document.getElementById("copy-btn");
+  const done = () => {
+    btn.textContent="✓ コピーしました！"; btn.className="copied";
+    setTimeout(closeDrawer, 800);
+  };
   if (navigator.clipboard) {
-    navigator.clipboard.writeText(t).then(showToast).catch(()=>fbCopy(t));
-  } else { fbCopy(t); }
+    navigator.clipboard.writeText(p.addr).then(done).catch(()=>{fb(p.addr);done();});
+  } else {fb(p.addr); done();}
 }
-function fbCopy(t) {
+function fb(t) {
   const ta = document.createElement("textarea");
-  ta.value = t; ta.style.cssText="position:fixed;opacity:0";
+  ta.value=t; ta.style.cssText="position:fixed;opacity:0;";
   document.body.appendChild(ta); ta.select();
-  try { document.execCommand("copy"); } catch(e){}
-  document.body.removeChild(ta); showToast();
-}
-let toastTimer;
-function showToast() {
-  const el = document.getElementById("copy-toast");
-  el.style.opacity="1"; clearTimeout(toastTimer);
-  toastTimer = setTimeout(()=>{ el.style.opacity="0"; }, 1800);
+  try {document.execCommand("copy");} catch(e){}
+  document.body.removeChild(ta);
 }
 </script>
+</body>
+</html>
